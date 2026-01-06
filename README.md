@@ -1,5 +1,7 @@
 # LSP-DETR: Efficient and Scalable Nuclei Segmentation in Whole Slide Images
 
+[HF Link](https://huggingface.co/RationAI/LSP-DETR)
+
 LSP-DETR (Local Star Polygon DEtection TRansformer) is a lightweight, efficient, and end-to-end deep learning model for nuclei instance segmentation in histopathological images. It combines a DETR-based transformer decoder with star-convex polygon shape descriptors to enable accurate and fast segmentation without complex post-processing.
 
 
