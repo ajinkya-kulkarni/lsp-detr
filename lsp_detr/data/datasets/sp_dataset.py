@@ -3,17 +3,17 @@ import numpy as np
 import torch
 from albumentations.core.composition import TransformsSeqType
 from albumentations.pytorch import ToTensorV2
-from datasets import Dataset
 from stardist import star_distances
 from torch import Tensor
 
+from lsp_detr.data.datasets.types import TissueSegmentationData
 from lsp_detr.misc import masks2centroids
 
 
 class SPDataset(torch.utils.data.Dataset[tuple[Tensor, dict[str, Tensor]]]):
     def __init__(
         self,
-        data: Dataset,
+        data: TissueSegmentationData,
         transforms: TransformsSeqType | None = None,
         n_rays: int = 64,
         allow_overlaps: bool = True,
@@ -60,5 +60,5 @@ class SPDataset(torch.utils.data.Dataset[tuple[Tensor, dict[str, Tensor]]]):
             "labels": torch.from_numpy(labels).long(),
             "radial_distances": torch.from_numpy(radial_distances),
             "centroids": masks2centroids(masks, normalize=True),
-            "tissue": self.data.features["tissue"].names[sample["tissue"]],
+            "tissue": self.data.tissue_names[sample["tissue"]],
         }

@@ -4,13 +4,14 @@ import albumentations as A
 import torch
 from albumentations.core.composition import TransformsSeqType
 from albumentations.pytorch import ToTensorV2
-from datasets import Dataset
 from PIL import Image
 from torch import Tensor
 
+from lsp_detr.data.datasets.types import SegmentationData
+
 
 class PredictDataset(torch.utils.data.Dataset[tuple[Tensor, dict[str, Any]]]):
-    def __init__(self, data: Dataset, transforms: TransformsSeqType | None) -> None:
+    def __init__(self, data: SegmentationData, transforms: TransformsSeqType | None) -> None:
         self.data = data
         self.transforms = A.Compose(transforms or [])
         self._to_tensor = ToTensorV2()

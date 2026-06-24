@@ -5,23 +5,20 @@ import numpy as np
 import torch
 from albumentations.core.composition import TransformsSeqType
 from albumentations.pytorch import ToTensorV2
-from datasets import Dataset
 from torch import Tensor
+
+from lsp_detr.data.datasets.types import TestSegmentationData
 
 
 class TestingDataset(torch.utils.data.Dataset[tuple[Tensor, dict[str, Any]]]):
     def __init__(
-        self, data: Dataset, transforms: TransformsSeqType | None = None
+        self, data: TestSegmentationData, transforms: TransformsSeqType | None = None
     ) -> None:
         super().__init__()
         self.data = data
         self.transforms = A.Compose(transforms or [])
         self._to_tensor = ToTensorV2(transpose_mask=True)
-        self.categories = (
-            self.data.features["categories"].feature.names
-            if "categories" in self.data.features
-            else []
-        )
+        self.categories = list(self.data.category_names)
 
     def __len__(self) -> int:
         return len(self.data)
@@ -45,5 +42,5 @@ class TestingDataset(torch.utils.data.Dataset[tuple[Tensor, dict[str, Any]]]):
         return transformed["image"], {
             "masks": transformed["mask"],
             "labels": torch.from_numpy(labels).long(),
-            "tissue": self.data.features["tissue"].names[sample["tissue"]],
+            "tissue": self.data.tissue_names[sample["tissue"]],
         }

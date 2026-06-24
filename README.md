@@ -17,12 +17,10 @@ cd lsp-detr
 uv sync
 ```
 
-## Training on PanNuke
-
-You need at least 10Gb of GPU memory to train the model.
+## Smoke Test
 
 ```bash
-uv run -m lsp_detr +experiment=PanNuke +data.train_fold=1 +data.val_fold=2 +data.test_fold=3
+uv run python3 scripts/verify_smoke_metrics.py
 ```
 
 ## Citing LSP-DETR

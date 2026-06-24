@@ -1,6 +1,5 @@
 from collections.abc import Iterable
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -10,6 +9,7 @@ from lightning import LightningDataModule
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
+
 from lsp_detr.data.datasets import PredictDataset, SPDataset, TestingDataset
 from lsp_detr.data.utils import collate_fn
 
@@ -29,8 +29,8 @@ class NuFuseDataset(Dataset[dict[str, Any]]):
         if max_samples is not None:
             self.image_paths = self.image_paths[:max_samples]
 
-        # Mimic HuggingFace datasets ClassLabel feature expected by SPDataset.
-        self.features = {"tissue": SimpleNamespace(names=["unknown"])}
+        self.tissue_names = ["unknown"]
+        self.category_names: list[str] = []
 
     def __len__(self) -> int:
         return len(self.image_paths)

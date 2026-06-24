@@ -1,5 +1,4 @@
-from lsp_detr.data.monuseg import MoNuSeg
-from lsp_detr.data.pannuke import PanNuke
+from lsp_detr.data.nufuse import NuFuse, NuFuseDataset
 
 
-__all__ = ["MoNuSeg", "PanNuke"]
+__all__ = ["NuFuse", "NuFuseDataset"]
