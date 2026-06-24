@@ -15,9 +15,9 @@ model:
 data:
   _target_: lsp_detr.data.nufuse.NuFuse
   root: NuFuse/merged_split/NuFuse-Train256
-  batch_size: 8
+  batch_size: 2
   num_workers: 0
-  max_samples: 8
+  max_samples: 4
   train_transforms:
     - _target_: lsp_detr.data.transforms.RandomRotate90
       p: 1.0
