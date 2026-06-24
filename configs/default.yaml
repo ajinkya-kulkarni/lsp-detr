@@ -1,6 +1,5 @@
 defaults:
   - hydra: default
-  - logger: mlflow
   - _self_
 
 seed: ${random_seed:}

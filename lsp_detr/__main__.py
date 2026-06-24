@@ -2,10 +2,8 @@ from random import randint
 
 import hydra
 import torch
-from lightning import seed_everything
-from lightning.pytorch.loggers import Logger
+from lightning import Trainer, seed_everything
 from omegaconf import DictConfig, ListConfig, OmegaConf
-from rationai.mlkit import Trainer, autolog
 
 
 # from lightning.fabric.utilities import measure_flops
@@ -16,8 +14,7 @@ OmegaConf.register_new_resolver(
 
 
 @hydra.main(config_path="../configs", config_name="default", version_base=None)
-@autolog
-def main(config: DictConfig, logger: Logger) -> None:
+def main(config: DictConfig) -> None:
     seed_everything(config.seed, workers=True)
     torch.set_float32_matmul_precision("high")
 
@@ -28,7 +25,11 @@ def main(config: DictConfig, logger: Logger) -> None:
     # flops = measure_flops(model.cpu(), lambda: model(torch.zeros(1, 3, 256, 256)))
     # print(f"FLOPs: {flops / 10**9}G")
 
-    trainer = hydra.utils.instantiate(config.trainer, _target_=Trainer, logger=logger)
+    trainer_config = config.trainer.copy()
+    if isinstance(trainer_config.get("callbacks"), DictConfig):
+        trainer_config.callbacks = list(trainer_config.callbacks.values())
+
+    trainer = hydra.utils.instantiate(trainer_config, _target_=Trainer, logger=False)
 
     if isinstance(config.mode, ListConfig):
         for mode in config.mode:
