@@ -4,9 +4,8 @@ mode: fit
 checkpoint: null
 
 trainer:
-  max_epochs: 2
+  max_epochs: 5
   log_every_n_steps: 1
-  limit_val_batches: 0
   accumulate_grad_batches: 4
 
 model:
@@ -50,5 +49,5 @@ data:
     - _target_: albumentations.Normalize
 
 metadata:
-  run_name: 🧪 NuFuse smoke test
+  run_name: NuFuse smoke test
   description: NuFuse smoke test on a few local images
