@@ -2,11 +2,13 @@
 
 mode: fit
 checkpoint: null
+seed: 42
 
 trainer:
   max_epochs: 5
   log_every_n_steps: 1
   accumulate_grad_batches: 4
+  enable_progress_bar: false
 
 model:
   num_classes: 1
@@ -18,36 +20,10 @@ data:
   num_workers: 0
   max_samples: 4
   train_transforms:
-    - _target_: lsp_detr.data.transforms.RandomRotate90
-      p: 1.0
-    - _target_: lsp_detr.data.transforms.HorizontalFlip
-    - _target_: lsp_detr.data.transforms.VerticalFlip
-    - _target_: albumentations.Downscale
-      p: 0.15
-      scale_range: [0.5, 0.5]
-    - _target_: albumentations.Blur
-      p: 0.2
-      blur_limit: 11
-    - _target_: albumentations.GaussNoise
-      p: 0.25
-      std_range: [0, 0.44]
-    - _target_: albumentations.ColorJitter
-      p: 0.2
-      brightness: 0.25
-      contrast: 0.25
-      saturation: 0.1
-      hue: 0.05
-    - _target_: albumentations.ZoomBlur
-      p: 0.1
-      max_factor: 1.05
-    - _target_: lsp_detr.data.transforms.ElasticTransform
-      p: 0.2
-      sigma: 25
-      alpha: 0.5
     - _target_: albumentations.Normalize
   eval_transforms:
     - _target_: albumentations.Normalize
 
 metadata:
-  run_name: NuFuse smoke test
-  description: NuFuse smoke test on a few local images
+  run_name: NuFuse smoke test (deterministic, no augmentations)
+  description: NuFuse smoke test with augmentations disabled and seed=42 for deterministic reference runs

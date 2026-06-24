@@ -182,7 +182,24 @@ class DETMetaArch(LSPDetrModel, LightningModule):
 
     def on_validation_epoch_end(self) -> None:
         self.log("validation/bPQ", mean(self.val_metrics.compute()["bPQ"]))
+        self._print_metrics("validation")
         self.val_metrics.reset()
+
+    def on_train_epoch_end(self) -> None:
+        self._print_metrics("train")
+
+    def _print_metrics(self, phase: str) -> None:
+        prefix = f"{phase}/"
+        items: list[str] = []
+        for key in sorted(self.trainer.callback_metrics):
+            if key.startswith(prefix):
+                name = key[len(prefix) :]
+                value = self.trainer.callback_metrics[key]
+                if isinstance(value, Tensor):
+                    value = value.item()
+                items.append(f"{name}={value:.6f}")
+        if items:
+            print(f"Epoch {self.current_epoch} - {phase}: {' '.join(items)}")
 
     def test_step(self, batch: tuple[Tensor, list[dict[str, Any]]]) -> None:
         inputs, targets = batch
