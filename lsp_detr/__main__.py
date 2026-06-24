@@ -29,7 +29,8 @@ def main(config: DictConfig) -> None:
     if isinstance(trainer_config.get("callbacks"), DictConfig):
         trainer_config.callbacks = list(trainer_config.callbacks.values())
 
-    trainer = hydra.utils.instantiate(trainer_config, _target_=Trainer, logger=False)
+    logger = hydra.utils.instantiate(config.logger)
+    trainer = hydra.utils.instantiate(trainer_config, _target_=Trainer, logger=logger)
 
     if isinstance(config.mode, ListConfig):
         for mode in config.mode:

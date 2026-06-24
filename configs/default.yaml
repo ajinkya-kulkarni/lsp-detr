@@ -1,5 +1,6 @@
 defaults:
   - hydra: default
+  - logger: tensorboard
   - _self_
 
 seed: ${random_seed:}
