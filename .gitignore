@@ -7,3 +7,5 @@ logs/tensorboard/
 .venv
 *.pyc
 lib/stardist/target
+.pytest_cache
+*__pycache__/
