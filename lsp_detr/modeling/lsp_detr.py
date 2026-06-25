@@ -1,5 +1,6 @@
 import math
 from functools import lru_cache
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 import torch.nn.functional as F
@@ -9,7 +10,9 @@ from torch.nn.attention.flex_attention import (
     BlockMask,
     _mask_mod_signature,
     create_block_mask,
-    flex_attention,
+)
+from torch.nn.attention.flex_attention import (
+    flex_attention as torch_flex_attention,
 )
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils.backbone_utils import load_backbone
@@ -18,7 +21,13 @@ from lsp_detr.configuration import LSPDetrConfig, STAConfig
 from lsp_detr.modeling.layers import MLP, CayleySTRING, FeedForward
 
 
-flex_attention = torch.compile(flex_attention, dynamic=True)
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
+flex_attention = cast(
+    "Callable[..., Tensor]", torch.compile(torch_flex_attention, dynamic=True)
+)
 
 
 def generate_sta_mask(
@@ -32,7 +41,7 @@ def generate_sta_mask(
     kv_canvas_tile_h = kv_canvas_hw[0] // kv_tile
     kv_canvas_tile_w = kv_canvas_hw[1] // kv_tile
 
-    def q_tile_rescale(x: Tensor):
+    def q_tile_rescale(x: Tensor) -> Tensor:
         # Computes round(x * (kv_canvas_tile_w - 1) / (q_canvas_tile_w - 1))
         scale_numerator = kv_canvas_tile_w - 1
         scale_denominator = q_canvas_tile_w - 1
@@ -88,17 +97,17 @@ def create_sta_block_mask(
     )
 
 
-@torch.autocast("cuda", enabled=False)
 def relative_to_absolute_pos(pos: Tensor, step_x: float, step_y: float) -> Tensor:
-    pos = pos.sigmoid()
-    h, w = pos.shape[1:3]
+    with torch.autocast("cuda", enabled=False):
+        pos = pos.sigmoid()
+        h, w = pos.shape[1:3]
 
-    anchor_x = torch.arange(w, dtype=torch.float32, device=pos.device) * step_x
-    anchor_y = torch.arange(h, dtype=torch.float32, device=pos.device) * step_y
+        anchor_x = torch.arange(w, dtype=torch.float32, device=pos.device) * step_x
+        anchor_y = torch.arange(h, dtype=torch.float32, device=pos.device) * step_y
 
-    absolute_x = pos[..., 0] * step_x + anchor_x
-    absolute_y = pos[..., 1] * step_y + anchor_y.unsqueeze(1)
-    return torch.stack((absolute_x, absolute_y), dim=-1)
+        absolute_x = pos[..., 0] * step_x + anchor_x
+        absolute_y = pos[..., 1] * step_y + anchor_y.unsqueeze(1)
+        return torch.stack((absolute_x, absolute_y), dim=-1)
 
 
 class STAttention(nn.Module):
@@ -278,12 +287,14 @@ class LSPTransformer(nn.Module):
 
         # initialize regression layers
         for head in self.point_head:
-            nn.init.constant_(head[-1].weight, 0)
-            nn.init.constant_(head[-1].bias, 0)
+            final_layer = cast("nn.Linear", cast("MLP", head)[-1])
+            nn.init.constant_(final_layer.weight, 0)
+            nn.init.constant_(final_layer.bias, 0)
 
         for head in self.radial_distances_head:
-            nn.init.constant_(head[-1].weight, 0)
-            nn.init.constant_(head[-1].bias, 0)
+            final_layer = cast("nn.Linear", cast("MLP", head)[-1])
+            nn.init.constant_(final_layer.weight, 0)
+            nn.init.constant_(final_layer.bias, 0)
 
     def forward(
         self,
@@ -388,7 +399,7 @@ class FeatureSampling(nn.Module):
 
 
 class LSPDetrModel(PreTrainedModel):
-    config_class = LSPDetrConfig
+    config_class: Any = LSPDetrConfig
 
     def __init__(self, config: LSPDetrConfig) -> None:
         super().__init__(config)
@@ -400,7 +411,9 @@ class LSPDetrModel(PreTrainedModel):
         self.feature_sampling = FeatureSampling(neck, config.dim)
         self.decode_head = LSPTransformer(config, feature_channels)
 
-    def forward(self, pixel_values: Tensor) -> dict[str, Tensor]:
+    def forward(
+        self, pixel_values: Tensor
+    ) -> dict[str, Tensor | list[dict[str, Tensor]]]:
         b, _, h, w = pixel_values.shape
 
         *features, neck = self.backbone(pixel_values).feature_maps

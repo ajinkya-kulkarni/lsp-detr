@@ -10,6 +10,9 @@ class F1Score(Metric):
         super().__init__()
         self.radius = radius
 
+        self.tp: Tensor
+        self.fp: Tensor
+        self.fn: Tensor
         self.add_state("tp", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("fp", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("fn", default=torch.tensor(0), dist_reduce_fx="sum")

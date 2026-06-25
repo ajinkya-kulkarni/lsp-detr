@@ -21,7 +21,11 @@ class NestedMetricCollection(ModuleDict):
         super().__init__()
         self.metric: MetricTemplate = metric
 
-    def update(self, *args: Any, key: str, **kwargs: Any) -> None:  # type: ignore[override]
+    def update(self, *args: Any, key: str | None = None, **kwargs: Any) -> None:
+        if key is None:
+            super().update(*args, **kwargs)
+            return
+
         if key not in self:
             self.add_module(key, deepcopy(self.metric))
 

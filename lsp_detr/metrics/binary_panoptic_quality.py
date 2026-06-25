@@ -44,6 +44,10 @@ class BinaryPanopticQuality(Metric):
         super().__init__()
         self.iou_threshold = iou_threshold
         self.masked = masked
+        self.bDQ: Tensor
+        self.bSQ: Tensor
+        self.bPQ: Tensor
+        self.count: Tensor
         self.add_state("bDQ", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("bSQ", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("bPQ", default=torch.tensor(0.0), dist_reduce_fx="sum")

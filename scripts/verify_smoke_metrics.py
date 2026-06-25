@@ -248,10 +248,19 @@ def main() -> int:
                 _, short_name = full_name.split("/", 1)
                 actual = run_metrics.get(short_name)
                 if actual is None:
-                    mismatches.append((phase, epoch, short_name, expected, None, "missing"))
+                    mismatches.append(
+                        (phase, epoch, short_name, expected, None, "missing")
+                    )
                 elif actual != expected:
                     mismatches.append(
-                        (phase, epoch, short_name, expected, actual, abs(actual - expected))
+                        (
+                            phase,
+                            epoch,
+                            short_name,
+                            expected,
+                            actual,
+                            abs(actual - expected),
+                        )
                     )
 
     print(f"Total metrics checked: {checked}")

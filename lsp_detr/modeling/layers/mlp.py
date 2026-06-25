@@ -15,7 +15,7 @@ class MLP(nn.Sequential):
     ) -> None:
         assert num_layers > 1
 
-        layers = []
+        layers: list[nn.Module] = []
         h = [hidden_dim] * (num_layers - 1)
         for n, k in zip([input_dim, *h], h, strict=False):
             layers.append(nn.Linear(n, k))

@@ -11,13 +11,15 @@ class AveragePrecision2018DSB(Metric):
     As described in the 2018 Data Science Bowl. IT DIFFERS FROM THE STANDARD AP.
     """
 
-    def __init__(self, iou_thresholds: Tensor | list) -> None:
+    def __init__(self, iou_thresholds: Tensor | list[float]) -> None:
         super().__init__()
-        self.iou_thresholds = (
+        self.iou_thresholds: Tensor = (
             iou_thresholds
             if isinstance(iou_thresholds, Tensor)
             else torch.tensor(iou_thresholds)
         )
+        self.ap_accumulated: Tensor
+        self.count: Tensor
         self.add_state(
             "ap_accumulated", default=torch.tensor(0.0), dist_reduce_fx="sum"
         )

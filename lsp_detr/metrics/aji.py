@@ -15,6 +15,8 @@ class AggregatedJaccardIndex(Metric):
 
     def __init__(self) -> None:
         super().__init__()
+        self.aji_accumulated: Tensor
+        self.count: Tensor
         self.add_state(
             "aji_accumulated", default=torch.tensor(0.0), dist_reduce_fx="sum"
         )

@@ -1,6 +1,6 @@
 from typing import Any, TypedDict
 
-from transformers import PretrainedConfig
+from transformers.configuration_utils import PretrainedConfig
 from transformers.utils.backbone_utils import verify_backbone_config_arguments
 
 
@@ -32,7 +32,7 @@ class LSPDetrConfig(PretrainedConfig):
             {"kernel": 5, "q_tile": 3, "kv_tile": 4},
             {"kernel": 5, "q_tile": 3, "kv_tile": 2},
         ),
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         if self_sta_config is None:
             self_sta_config = {"kernel": 3, "q_tile": 3, "kv_tile": 3}

@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 from lightning import Callback, LightningModule, Trainer
 from PIL import ImageDraw
@@ -21,7 +22,7 @@ class TileMaskExport(Callback):
         trainer: Trainer,
         pl_module: LightningModule,
         outputs: Iterable[dict[str, Tensor]],
-        batch: tuple[Tensor, list],
+        batch: tuple[Tensor, list[dict[str, Any]]],
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> None:

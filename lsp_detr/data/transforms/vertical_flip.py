@@ -1,10 +1,24 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import albumentations as A
 from numpy.typing import NDArray
 
 
-class VerticalFlip(A.VerticalFlip):
+if TYPE_CHECKING:
+
+    class _VerticalFlipBase:
+        def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+        def apply_to_mask(
+            self, mask: NDArray[Any], *args: Any, **params: Any
+        ) -> NDArray[Any]: ...
+
+else:
+    from albumentations.augmentations.geometric.flip import (
+        VerticalFlip as _VerticalFlipBase,
+    )
+
+
+class VerticalFlip(_VerticalFlipBase):
     def apply_to_mask(
         self, mask: NDArray[Any], *args: Any, **params: Any
     ) -> NDArray[Any]:

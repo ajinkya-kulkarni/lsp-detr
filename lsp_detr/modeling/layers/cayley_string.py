@@ -25,7 +25,6 @@ class CayleySTRING(nn.Module):
         self.freqs = nn.Parameter(repeat(freqs, "d -> p d", p=pos_dim).clone())
         self.P = orthogonal(nn.Linear(dim, dim, bias=False), orthogonal_map="cayley")
 
-    @torch.autocast("cuda", enabled=False)
     def forward(self, x: Tensor, positions: Tensor) -> Tensor:
         """Apply Cayley-STRING positional encoding.
 
@@ -33,14 +32,19 @@ class CayleySTRING(nn.Module):
             x ([b, h, n, d]): Input tensor.
             positions ([b, n, pos_dim]): Positions tensor.
         """
-        px = self.P(x.float())
+        with torch.autocast("cuda", enabled=False):
+            px = self.P(x.float())
 
-        # apply RoPE-Mixed
-        freqs = positions @ self.freqs
-        freqs_cis = rearrange(
-            torch.polar(torch.ones_like(freqs), freqs), "b n c -> b 1 n c"
-        )
-        px_ = torch.view_as_complex(rearrange(px, "... (d two) -> ... d two", two=2))
-        out = rearrange(torch.view_as_real(px_ * freqs_cis), "... d two -> ... (d two)")
+            # apply RoPE-Mixed
+            freqs = positions @ self.freqs
+            freqs_cis = rearrange(
+                torch.polar(torch.ones_like(freqs), freqs), "b n c -> b 1 n c"
+            )
+            px_ = torch.view_as_complex(
+                rearrange(px, "... (d two) -> ... d two", two=2)
+            )
+            out = rearrange(
+                torch.view_as_real(px_ * freqs_cis), "... d two -> ... (d two)"
+            )
 
-        return out.type_as(x)
+            return out.type_as(x)

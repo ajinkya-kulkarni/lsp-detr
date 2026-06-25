@@ -1,6 +1,6 @@
 import re
 from statistics import mean
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 from lightning import LightningModule
@@ -20,7 +20,27 @@ from lsp_detr.modeling import SetCriterion
 from lsp_detr.modeling.lsp_detr import LSPDetrModel
 
 
-class LSPDetrModule(LSPDetrModel, LightningModule):
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    class _LSPDetrModuleBase(LSPDetrModel):
+        trainer: Any
+        logger: Any
+        current_epoch: int
+
+        def log(self, name: str, value: Any, *args: Any, **kwargs: Any) -> None: ...
+
+        def log_dict(
+            self, dictionary: Mapping[str, Any], *args: Any, **kwargs: Any
+        ) -> None: ...
+
+else:
+
+    class _LSPDetrModuleBase(LSPDetrModel, LightningModule):
+        pass
+
+
+class LSPDetrModule(_LSPDetrModuleBase):
     def __init__(
         self,
         warmup_epochs: int,
@@ -63,7 +83,7 @@ class LSPDetrModule(LSPDetrModel, LightningModule):
             if (name := self._aux_pattern.sub("", key)) in self.criterion.weight_dict
         }
 
-        return sum(losses.values())  # type: ignore[return-value]
+        return sum(losses.values(), torch.zeros((), device=inputs.device))
 
     def validation_step(self, batch: tuple[Tensor, Any]) -> None:
         inputs, targets = batch
@@ -77,9 +97,11 @@ class LSPDetrModule(LSPDetrModel, LightningModule):
             prog_bar=True,
         )
 
-        results = self.processor.post_process(outputs)
+        results = self.processor.post_process(cast("dict[str, Tensor]", outputs))
+        height = inputs.shape[-2]
+        width = inputs.shape[-1]
         results = self.processor.post_process_instance(
-            results, *inputs.shape[2:], allow_overlap=False
+            results, height=height, width=width, allow_overlap=False
         )
 
         for b, result in enumerate(results):
@@ -102,9 +124,8 @@ class LSPDetrModule(LSPDetrModel, LightningModule):
             if key.startswith(prefix):
                 name = key[len(prefix) :]
                 value = self.trainer.callback_metrics[key]
-                if isinstance(value, Tensor):
-                    value = value.item()
-                items.append(f"{name}={value:.6f}")
+                display_value = value.item() if isinstance(value, Tensor) else value
+                items.append(f"{name}={float(display_value):.6f}")
         if items:
             print(f"Epoch {self.current_epoch} - {phase}: {' '.join(items)}")
 
@@ -112,18 +133,22 @@ class LSPDetrModule(LSPDetrModel, LightningModule):
         inputs, targets = batch
         outputs = self(inputs)
 
-        results = self.processor.post_process(outputs)
+        results = self.processor.post_process(cast("dict[str, Tensor]", outputs))
+        height = inputs.shape[-2]
+        width = inputs.shape[-1]
         results = self.processor.post_process_instance(
-            results, *inputs.shape[2:], allow_overlap=False
+            results, height=height, width=width, allow_overlap=False
         )
+        trainer = cast("Any", self.trainer)
+        datamodule_name = trainer.datamodule.name
         for b, result in enumerate(results):
             self.binary_test_metrics.update(
-                result["masks"], targets[b]["masks"], key=self.trainer.datamodule.name
+                result["masks"], targets[b]["masks"], key=datamodule_name
             )
             self.multiclass_test_metric.update(
                 {"masks": result["masks"], "labels": result["labels"]},
                 targets[b],
-                key=self.trainer.datamodule.name,
+                key=datamodule_name,
             )
 
             self.tissue_binary_test_metrics.update(
@@ -134,9 +159,7 @@ class LSPDetrModule(LSPDetrModel, LightningModule):
                 targets[b],
                 key=targets[b]["tissue"],
             )
-            for c, category in enumerate(
-                self.trainer.test_dataloaders.dataset.categories
-            ):
+            for c, category in enumerate(trainer.test_dataloaders.dataset.categories):
                 self.category_test_metric.update(
                     result["masks"][result["labels"] == c],
                     targets[b]["masks"][targets[b]["labels"] == c],
@@ -144,18 +167,21 @@ class LSPDetrModule(LSPDetrModel, LightningModule):
                 )
 
     def on_test_epoch_end(self) -> None:
-        self.logger.log_table(
+        trainer = cast("Any", self.trainer)
+        logger = cast("Any", self.logger)
+        datamodule_name = trainer.datamodule.name
+        logger.log_table(
             self.binary_test_metrics.compute() | self.multiclass_test_metric.compute(),
             "test_metrics.json",
         )
-        self.logger.log_table(
+        logger.log_table(
             self.tissue_binary_test_metrics.compute()
             | self.tissue_multiclass_test_metric.compute(),
-            f"{self.trainer.datamodule.name}_tissue_test_metrics.json",
+            f"{datamodule_name}_tissue_test_metrics.json",
         )
-        self.logger.log_table(
+        logger.log_table(
             self.category_test_metric.compute(),
-            f"{self.trainer.datamodule.name}_category_test_metrics.json",
+            f"{datamodule_name}_category_test_metrics.json",
         )
         self.binary_test_metrics.reset()
         self.multiclass_test_metric.reset()
@@ -168,7 +194,7 @@ class LSPDetrModule(LSPDetrModel, LightningModule):
     ) -> list[dict[str, Tensor]]:
         inputs = batch[0]
         outputs = self(inputs)
-        return self.processor.post_process(outputs)
+        return self.processor.post_process(cast("dict[str, Tensor]", outputs))
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         optimizer = torch.optim.AdamW(
@@ -177,16 +203,18 @@ class LSPDetrModule(LSPDetrModel, LightningModule):
             weight_decay=1e-4,
         )
 
+        max_epochs = self.trainer.max_epochs
+        if max_epochs is None:
+            raise ValueError("Trainer max_epochs must be set for CosineLRScheduler.")
+
         scheduler = CosineLRScheduler(
             optimizer,
-            t_initial=self.trainer.max_epochs,
+            t_initial=max_epochs,
             lr_min=1e-6 / self.trainer.accumulate_grad_batches,
             warmup_lr_init=1e-7 / self.trainer.accumulate_grad_batches,
             warmup_t=self.warmup_epochs,
         )
-        return [optimizer], [scheduler]
+        return cast("OptimizerLRScheduler", ([optimizer], [scheduler]))
 
-    def lr_scheduler_step(
-        self, scheduler: CosineLRScheduler, metric: Any | None
-    ) -> None:
-        scheduler.step(epoch=self.current_epoch)
+    def lr_scheduler_step(self, scheduler: Any, metric: Any | None) -> None:
+        cast("CosineLRScheduler", scheduler).step(epoch=self.current_epoch)

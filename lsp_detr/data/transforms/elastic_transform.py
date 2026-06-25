@@ -1,13 +1,35 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import albumentations as A
 from numpy.typing import NDArray
 
 
-class ElasticTransform(A.ElasticTransform):
+if TYPE_CHECKING:
+
+    class _ElasticTransformBase:
+        def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+
+        def apply_to_mask(
+            self,
+            mask: NDArray[Any],
+            map_x: NDArray[Any],
+            map_y: NDArray[Any],
+            **params: Any,
+        ) -> NDArray[Any]: ...
+
+else:
+    from albumentations.augmentations.geometric.distortion import (
+        ElasticTransform as _ElasticTransformBase,
+    )
+
+
+class ElasticTransform(_ElasticTransformBase):
     def apply_to_mask(
-        self, mask: NDArray, map_x: NDArray, map_y: NDArray, **params: Any
-    ) -> NDArray:
+        self,
+        mask: NDArray[Any],
+        map_x: NDArray[Any],
+        map_y: NDArray[Any],
+        **params: Any,
+    ) -> NDArray[Any]:
         if mask.size == 0:
             return mask
         return super().apply_to_mask(mask, map_x, map_y, **params)

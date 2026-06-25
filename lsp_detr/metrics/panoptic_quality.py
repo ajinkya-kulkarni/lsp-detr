@@ -14,6 +14,10 @@ class PanopticQuality(Metric):
         self.iou_threshold = iou_threshold
         self.masked = masked
 
+        self.mDQ: Tensor
+        self.mSQ: Tensor
+        self.mPQ: Tensor
+        self.count: Tensor
         self.add_state("mDQ", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("mSQ", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("mPQ", default=torch.tensor(0.0), dist_reduce_fx="sum")

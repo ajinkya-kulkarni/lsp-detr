@@ -101,7 +101,9 @@ class NuFuse(LightningDataModule):
             case "predict":
                 self.predict_dataset = PredictDataset(data, self.eval_transforms)
 
-    def _dataloader(self, dataset: Dataset[Any], shuffle: bool = False) -> DataLoader:
+    def _dataloader(
+        self, dataset: Dataset[Any], shuffle: bool = False
+    ) -> DataLoader[tuple[Tensor, list[dict[str, Any]]]]:
         return DataLoader(
             dataset,
             batch_size=self.batch_size,

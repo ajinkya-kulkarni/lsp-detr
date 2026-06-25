@@ -12,10 +12,10 @@ def masks2centroids(masks: Tensor, normalize: bool = False) -> Tensor:
     Returns:
         Tensor: Centroids of shape [N, 2], where 2 is (x, y) coordinates.
     """
-    centroids = [torch.nonzero(mask).float().mean(0) for mask in masks]
+    centroid_list = [torch.nonzero(mask).float().mean(0) for mask in masks]
 
-    if centroids:
-        centroids = torch.stack(centroids)
+    if centroid_list:
+        centroids = torch.stack(centroid_list)
         if normalize:
             centroids[:, 0] /= masks.shape[1]
             centroids[:, 1] /= masks.shape[2]
