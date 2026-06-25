@@ -6,14 +6,14 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Reference metrics captured from a canonical deterministic CPU smoke test run:
 # TORCH_COMPILE_DISABLE=1 uv run -m lsp_detr +experiment=NuFuseSmoke +trainer.accelerator=cpu
 # Config: seed=42, no augmentations, enable_progress_bar=false, bf16-mixed on CPU.
-REFERENCE_METRICS: Dict[str, Dict[str, Dict[str, float]]] = {
+REFERENCE_METRICS: dict[str, dict[str, dict[str, float]]] = {
     "train": {
         "0": {
             "train/loss_ce": 0.500839,
@@ -163,9 +163,9 @@ REFERENCE_METRICS: Dict[str, Dict[str, Dict[str, float]]] = {
 }
 
 
-def parse_output(text: str) -> Dict[Tuple[int, str], Dict[str, float]]:
+def parse_output(text: str) -> dict[tuple[int, str], dict[str, float]]:
     """Parse clean 'Epoch N - phase: name=value ...' lines from captured terminal output."""
-    data: Dict[Tuple[int, str], Dict[str, float]] = {}
+    data: dict[tuple[int, str], dict[str, float]] = {}
     for raw in text.splitlines():
         line = raw.split("\r")[-1]
         match = re.match(r"Epoch (\d+) - (train|validation):\s*(.*)", line)
@@ -208,7 +208,7 @@ def run_smoke_test() -> str:
         text=True,
     )
 
-    lines: List[str] = []
+    lines: list[str] = []
     if process.stdout is not None:
         for line in iter(process.stdout.readline, ""):
             print(line, end="")
@@ -232,7 +232,7 @@ def main() -> int:
 
     print(f"Parsed {len(rerun)} epoch summary line(s) from terminal output.")
 
-    mismatches: List[Tuple[str, int, str, float, Optional[float], object]] = []
+    mismatches: list[tuple[str, int, str, float, float | None, object]] = []
     checked = 0
     for phase in ("train", "validation"):
         ref_phase = REFERENCE_METRICS.get(phase, {})

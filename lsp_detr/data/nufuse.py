@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
 from albumentations.core.composition import TransformsSeqType
 from lightning import LightningDataModule
 from PIL import Image
