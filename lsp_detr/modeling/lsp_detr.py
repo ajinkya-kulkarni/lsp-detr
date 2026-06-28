@@ -1,7 +1,8 @@
 import math
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
+import timm
 import torch
 import torch.nn.functional as F
 from einops import rearrange
@@ -14,8 +15,6 @@ from torch.nn.attention.flex_attention import (
 from torch.nn.attention.flex_attention import (
     flex_attention as torch_flex_attention,
 )
-from transformers.modeling_utils import PreTrainedModel
-from transformers.utils.backbone_utils import load_backbone
 
 from lsp_detr.configuration import LSPDetrConfig, STAConfig
 from lsp_detr.modeling.layers import MLP, CayleySTRING, FeedForward
@@ -398,15 +397,18 @@ class FeatureSampling(nn.Module):
         return self.norm(rearrange(x, "b c h w -> b h w c"))
 
 
-class LSPDetrModel(PreTrainedModel):
-    config_class: Any = LSPDetrConfig
-
+class LSPDetrModel(nn.Module):
     def __init__(self, config: LSPDetrConfig) -> None:
-        super().__init__(config)
+        super().__init__()
         self.query_block_size = config.query_block_size
 
-        self.backbone = load_backbone(config)
-        _, *feature_channels, neck = self.backbone.num_features
+        self.backbone = timm.create_model(
+            config.backbone,
+            pretrained=config.pretrained_backbone,
+            features_only=True,
+            out_indices=(0, 1, 2, 3),
+        )
+        *feature_channels, neck = self.backbone.feature_info.channels()
 
         self.feature_sampling = FeatureSampling(neck, config.dim)
         self.decode_head = LSPTransformer(config, feature_channels)
@@ -416,7 +418,7 @@ class LSPDetrModel(PreTrainedModel):
     ) -> dict[str, Tensor | list[dict[str, Tensor]]]:
         b, _, h, w = pixel_values.shape
 
-        *features, neck = self.backbone(pixel_values).feature_maps
+        *features, neck = (f.permute(0, 3, 1, 2) for f in self.backbone(pixel_values))
 
         ref_points = torch.zeros(
             b,
@@ -428,7 +430,9 @@ class LSPDetrModel(PreTrainedModel):
         )  # center positions
         tgt = self.feature_sampling(
             relative_to_absolute_pos(
-                ref_points, self.query_block_size, self.query_block_size
+                ref_points,
+                self.query_block_size / w,
+                self.query_block_size / h,
             ),
             neck,
         )

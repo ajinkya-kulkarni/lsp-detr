@@ -1,9 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-# Modified by Bowen Cheng from https://github.com/facebookresearch/detr/blob/master/models/detr.py
-# Modified by Matěj Pekár from https://github.com/facebookresearch/Mask2Former/blob/main/mask2former/modeling/criterion.py
-
-
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict, cast
 
 import torch
 import torch.nn.functional as F
@@ -13,29 +8,28 @@ from torch.nn.utils.rnn import pad_sequence
 from torchvision.ops import sigmoid_focal_loss
 
 
-def l1_log_space_loss(
-    outputs: Tensor, tgt_min_bound: Tensor, tgt_max_bound: Tensor
-) -> Tensor:
-    """Compute the L1 log-space loss for the radial distances."""
-    # L1 minimum bound
-    loss_min = F.relu(tgt_min_bound.log() - outputs)
-
-    # L1 maximum bound
-    loss_max = F.relu(outputs - tgt_max_bound.log())
-
-    loss = torch.max(loss_min, loss_max)
-    return loss.nanmean()
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
-pad_sequence = torch.compiler.disable(pad_sequence)
+def l1_log_space_loss(outputs: Tensor, tgt_bound: Tensor) -> Tensor:
+    """L1 loss in log-space for radial distances."""
+    return (outputs - tgt_bound.log()).abs().nanmean().nan_to_num(0.0)
+
+
+_pad_sequence = cast("Callable[..., Tensor]", torch.compiler.disable(pad_sequence))
 
 
 class Outputs(TypedDict):
     logits: Tensor
     radial_distances: Tensor
     points: Tensor
-    mask: Tensor
-    aux_outputs: list["Outputs"]
+
+
+class ModelOutputs(Outputs):
+    absolute_points: Tensor
+    embeddings: Tensor
+    aux_outputs: list[Outputs]
 
 
 class Target(TypedDict):
@@ -100,22 +94,20 @@ class SetCriterion(nn.Module):
         src_radial_distances = outputs["radial_distances"]
 
         tgt_radial_distance_map = torch.stack([t["radial_distances"] for t in targets])
-        tgt_centroids = pad_sequence(
+        tgt_centroids = _pad_sequence(
             [t["centroids"] for t in targets], batch_first=True
         )
 
         with torch.no_grad():
             grid = src_points * 2 - 1  # Normalize to [-1, 1]
             # Sample the target radial distances at the predicted reference points
-            tgt_radial_distances = F.grid_sample(
-                rearrange(tgt_radial_distance_map, "B two R H W -> B (two R) H W"),
+            tgt_bound = F.grid_sample(
+                tgt_radial_distance_map,
                 grid.unsqueeze(1),  # (B, 1, N, 2)
                 align_corners=False,
                 padding_mode="zeros",  # border results in NaN with Infs
             )
-            min_bound, max_bound = rearrange(
-                tgt_radial_distances, "B (two R) 1 N -> two B N R", two=2
-            )
+            tgt_bound = rearrange(tgt_bound, "B R 1 N -> B N R")
 
         return {
             "loss_centroids": F.l1_loss(
@@ -123,9 +115,8 @@ class SetCriterion(nn.Module):
             ).nan_to_num(0.0),  # if empty
             "loss_radial_distances": l1_log_space_loss(
                 outputs=src_radial_distances[src_idx],
-                tgt_min_bound=min_bound[src_idx].to(src_radial_distances),
-                tgt_max_bound=max_bound[src_idx].to(src_radial_distances),
-            ).nan_to_num(0.0),
+                tgt_bound=tgt_bound[src_idx].to(src_radial_distances),
+            ),
         }
 
     def _get_src_permutation_indices(
@@ -148,7 +139,9 @@ class SetCriterion(nn.Module):
         target_indices = torch.cat([tgt for (_, tgt) in indices])
         return batch_indices, target_indices
 
-    def forward(self, outputs: Outputs, targets: list[Target]) -> dict[str, Tensor]:
+    def forward(
+        self, outputs: ModelOutputs, targets: list[Target]
+    ) -> dict[str, Tensor]:
         """This performs the loss computation.
 
         Args:

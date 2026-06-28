@@ -1,5 +1,4 @@
 import re
-from statistics import mean
 from typing import TYPE_CHECKING, Any, cast
 
 import torch
@@ -11,9 +10,7 @@ from torch import Tensor
 from lsp_detr.configuration import LSPDetrConfig
 from lsp_detr.image_processing import LSPDetrImageProcessor
 from lsp_detr.metrics.collections import (
-    build_binary_test_metrics,
-    build_category_test_metrics,
-    build_multiclass_test_metrics,
+    build_test_metrics,
     build_validation_metrics,
 )
 from lsp_detr.modeling import SetCriterion
@@ -50,18 +47,13 @@ class LSPDetrModule(_LSPDetrModuleBase):
     ) -> None:
         super().__init__(LSPDetrConfig(**config, num_classes=num_classes))
         self.criterion = criterion
-        self.num_classes = num_classes
         self.warmup_epochs = warmup_epochs
 
         self.backbone.train()  # to enable the drop path
         self.processor = LSPDetrImageProcessor()
 
         self.val_metrics = build_validation_metrics()
-        self.binary_test_metrics = build_binary_test_metrics()
-        self.multiclass_test_metric = build_multiclass_test_metrics(num_classes)
-        self.tissue_binary_test_metrics = build_binary_test_metrics()
-        self.tissue_multiclass_test_metric = build_multiclass_test_metrics(num_classes)
-        self.category_test_metric = build_category_test_metrics()
+        self.test_metrics = build_test_metrics()
         self._aux_pattern = re.compile(r"_\d+$")
 
     def training_step(self, batch: tuple[Tensor, Any]) -> Tensor:
@@ -101,16 +93,14 @@ class LSPDetrModule(_LSPDetrModuleBase):
         height = inputs.shape[-2]
         width = inputs.shape[-1]
         results = self.processor.post_process_instance(
-            results, height=height, width=width, allow_overlap=False
+            results, height=height, width=width
         )
 
         for b, result in enumerate(results):
-            self.val_metrics.update(
-                result["masks"], targets[b]["masks"], key=targets[b]["tissue"]
-            )
+            self.val_metrics.update(result["masks"], targets[b]["masks"])
 
     def on_validation_epoch_end(self) -> None:
-        self.log("validation/bPQ", mean(self.val_metrics.compute()["bPQ"]))
+        self.log("validation/pq", self.val_metrics.compute()["pq"])
         self._print_metrics("validation")
         self.val_metrics.reset()
 
@@ -137,64 +127,18 @@ class LSPDetrModule(_LSPDetrModuleBase):
         height = inputs.shape[-2]
         width = inputs.shape[-1]
         results = self.processor.post_process_instance(
-            results, height=height, width=width, allow_overlap=False
+            results, height=height, width=width
         )
-        trainer = cast("Any", self.trainer)
-        datamodule_name = trainer.datamodule.name
         for b, result in enumerate(results):
-            self.binary_test_metrics.update(
-                result["masks"], targets[b]["masks"], key=datamodule_name
-            )
-            self.multiclass_test_metric.update(
-                {"masks": result["masks"], "labels": result["labels"]},
-                targets[b],
-                key=datamodule_name,
-            )
-
-            self.tissue_binary_test_metrics.update(
-                result["masks"], targets[b]["masks"], key=targets[b]["tissue"]
-            )
-            self.tissue_multiclass_test_metric.update(
-                {"masks": result["masks"], "labels": result["labels"]},
-                targets[b],
-                key=targets[b]["tissue"],
-            )
-            for c, category in enumerate(trainer.test_dataloaders.dataset.categories):
-                self.category_test_metric.update(
-                    result["masks"][result["labels"] == c],
-                    targets[b]["masks"][targets[b]["labels"] == c],
-                    key=category,
-                )
+            self.test_metrics.update(result["masks"], targets[b]["masks"])
 
     def on_test_epoch_end(self) -> None:
-        trainer = cast("Any", self.trainer)
         logger = cast("Any", self.logger)
-        datamodule_name = trainer.datamodule.name
         logger.log_table(
-            self.binary_test_metrics.compute() | self.multiclass_test_metric.compute(),
+            self.test_metrics.compute(),
             "test_metrics.json",
         )
-        logger.log_table(
-            self.tissue_binary_test_metrics.compute()
-            | self.tissue_multiclass_test_metric.compute(),
-            f"{datamodule_name}_tissue_test_metrics.json",
-        )
-        logger.log_table(
-            self.category_test_metric.compute(),
-            f"{datamodule_name}_category_test_metrics.json",
-        )
-        self.binary_test_metrics.reset()
-        self.multiclass_test_metric.reset()
-        self.tissue_binary_test_metrics.reset()
-        self.tissue_multiclass_test_metric.reset()
-        self.category_test_metric.reset()
-
-    def predict_step(
-        self, batch: tuple[Tensor, Any], batch_idx: int, dataloader_idx: int = 0
-    ) -> list[dict[str, Tensor]]:
-        inputs = batch[0]
-        outputs = self(inputs)
-        return self.processor.post_process(cast("dict[str, Tensor]", outputs))
+        self.test_metrics.reset()
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         optimizer = torch.optim.AdamW(

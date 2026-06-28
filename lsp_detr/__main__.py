@@ -6,8 +6,6 @@ from lightning import Trainer, seed_everything
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 
-# from lightning.fabric.utilities import measure_flops
-
 OmegaConf.register_new_resolver(
     "random_seed", lambda: randint(0, 2**31), use_cache=True
 )
@@ -20,10 +18,6 @@ def main(config: DictConfig) -> None:
 
     data = hydra.utils.instantiate(config.data)
     model = hydra.utils.instantiate(config.model)
-
-    # FLOPs computation
-    # flops = measure_flops(model.cpu(), lambda: model(torch.zeros(1, 3, 256, 256)))
-    # print(f"FLOPs: {flops / 10**9}G")
 
     trainer_config = config.trainer.copy()
     if isinstance(trainer_config.get("callbacks"), DictConfig):

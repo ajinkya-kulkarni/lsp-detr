@@ -7,18 +7,17 @@ from albumentations.core.composition import TransformsSeqType
 from albumentations.pytorch import ToTensorV2
 from torch import Tensor
 
-from lsp_detr.data.datasets.types import TestSegmentationData
+from lsp_detr.data.datasets.types import SegmentationData
 
 
 class TestingDataset(torch.utils.data.Dataset[tuple[Tensor, dict[str, Any]]]):
     def __init__(
-        self, data: TestSegmentationData, transforms: TransformsSeqType | None = None
+        self, data: SegmentationData, transforms: TransformsSeqType | None = None
     ) -> None:
         super().__init__()
         self.data = data
         self.transforms = A.Compose(transforms or [])
         self._to_tensor = ToTensorV2(transpose_mask=True)
-        self.categories = list(self.data.category_names)
 
     def __len__(self) -> int:
         return len(self.data)
@@ -27,11 +26,7 @@ class TestingDataset(torch.utils.data.Dataset[tuple[Tensor, dict[str, Any]]]):
         sample = self.data[idx]
         image = sample["image"]
         masks = sample["instances"]
-        labels = (
-            sample["categories"]
-            if "categories" in sample
-            else np.zeros(masks.shape[-1])
-        )
+        labels = np.zeros(masks.shape[-1], dtype=np.uint8)
 
         transformed = self.transforms(image=image, mask=masks)
         image = transformed["image"]
@@ -42,5 +37,4 @@ class TestingDataset(torch.utils.data.Dataset[tuple[Tensor, dict[str, Any]]]):
         return transformed["image"], {
             "masks": transformed["mask"],
             "labels": torch.from_numpy(labels).long(),
-            "tissue": self.data.tissue_names[sample["tissue"]],
         }

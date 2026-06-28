@@ -1,14 +1,11 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-# Modified by Bowen Cheng from https://github.com/facebookresearch/detr/blob/master/models/matcher.py
-# Modified by Matěj Pekár from https://github.com/facebookresearch/Mask2Former/blob/main/mask2former/modeling/matcher.py
-"""Modules to compute the matching cost and solve the corresponding LSAP."""
+"""Hungarian matcher for LSP-DETR."""
 
 from collections.abc import Iterable
 from typing import TypedDict
 
 import torch
 import torch.nn.functional as F
-from einops import rearrange, repeat
+from einops import rearrange
 from torch import Tensor, nn
 
 from lsp_detr.misc import linear_assignment
@@ -27,18 +24,11 @@ class Target(TypedDict):
     radial_distances: Tensor
 
 
-def l1_log_space_cost(
-    outputs: Tensor, tgt_min_bound: Tensor, tgt_max_bound: Tensor
-) -> Tensor:
-    """Compute the L1 log-space loss for the radial distances."""
-    # L1 minimum bound
-    loss_min = F.relu(tgt_min_bound.log() - outputs)
-
-    # L1 maximum bound
-    loss_max = F.relu(outputs - tgt_max_bound.log())
-
-    loss = torch.max(loss_min, loss_max)
-    return loss.mean(-1).nan_to_num(1.0)
+def l1_log_space_cost(outputs: Tensor, tgt_bound: Tensor) -> Tensor:
+    """L1 log-space cost for radial distances."""
+    return (
+        F.l1_loss(outputs, tgt_bound.log(), reduction="none").mean(-1).nan_to_num(1.0)
+    )
 
 
 class HungarianMatcher(nn.Module):
@@ -90,7 +80,7 @@ class HungarianMatcher(nn.Module):
 
         out_point = out_point[None, None] * 2 - 1  # Scale to [-1, 1]
         sampled_mask = F.grid_sample(tgt_mask[None], out_point, align_corners=False)
-        return rearrange(-sampled_mask, "1 M 1 N -> N M")
+        return 1 - rearrange(sampled_mask, "1 M 1 N -> N M")
 
     def compute_cost_radial_distances(
         self,
@@ -98,32 +88,29 @@ class HungarianMatcher(nn.Module):
         out_radial_distances: Tensor,
         tgt_radial_distances: Tensor,
     ) -> Tensor:
-        """Compute L1 loss between predicted and target radial distances.
-
-        We only compute the cost for each predicted point, as inner loss penalizes mismatched points.
+        """Compute L1 cost between predicted and target radial distances.
 
         Args:
             out_point (N, 2): (x,y) coordinates scaled to 0-1
             out_radial_distances (N, R): R radial distances for each point
-            tgt_radial_distances (2, R, H, W): Map of target radial distances
+            tgt_radial_distances (R, H, W): Map of target radial distances
 
         Returns:
-            cost_radial_distances (N, 1): L1 loss between predicted and target radial distances
+            cost_radial_distances (N, 1): L1 cost between predicted and target radial distances
         """
         grid = 2 * out_point - 1
         sampled = F.grid_sample(
-            tgt_radial_distances,
-            repeat(grid, "N two -> 2 1 N two"),
+            tgt_radial_distances.unsqueeze(0),
+            rearrange(grid, "N two -> 1 1 N two"),
             align_corners=False,
-            padding_mode="zeros",  # "border" results in NaN with Infs
-        )  # [2, R, 1, N]
+            padding_mode="zeros",
+        )
 
-        min_bound, max_bound = rearrange(sampled, "two R 1 N -> two N 1 R")
+        tgt_bound = rearrange(sampled, "1 R 1 N -> N 1 R")
 
         return l1_log_space_cost(
             outputs=rearrange(out_radial_distances, "N R -> N 1 R"),
-            tgt_min_bound=min_bound,
-            tgt_max_bound=max_bound,
+            tgt_bound=tgt_bound,
         )
 
     @torch.no_grad()
@@ -133,21 +120,11 @@ class HungarianMatcher(nn.Module):
         """Performs memory-friendly matching.
 
         Args:
-            outputs: This is a dict that contains at least these entries:
-                 "pred_logits": Tensor of dim [batch_size, num_queries, num_classes] with the classification logits
-                 "pred_masks": Tensor of dim [batch_size, num_queries, H_pred, W_pred] with the predicted masks
-
-            targets: This is a list of targets (len(targets) = batch_size), where each target is a dict containing:
-                 "labels": Tensor of dim [num_target_boxes] (where num_target_boxes is the number of ground-truth
-                           objects in the target) containing the class labels
-                 "masks": Tensor of dim [num_target_boxes, H_gt, W_gt] containing the target masks
+            outputs: dict containing "logits" [B, Q, C], "radial_distances" [B, Q, R], "points" [B, Q, 2]
+            targets: list of dicts (len = batch_size) with "labels", "masks", "centroids", "radial_distances"
 
         Returns:
-            A list of size batch_size, containing tuples of (index_i, index_j) where:
-                - index_i is the indices of the selected predictions (in order)
-                - index_j is the indices of the corresponding selected targets (in order)
-            For each batch element, it holds:
-                len(index_i) = len(index_j) = min(num_queries, num_target_boxes)
+            list of (index_i, index_j) tuples matching predictions to targets per batch element.
         """
         indices: list[tuple[Tensor, Tensor]] = []
 

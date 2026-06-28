@@ -9,7 +9,7 @@ from PIL import Image
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
-from lsp_detr.data.datasets import PredictDataset, SPDataset, TestingDataset
+from lsp_detr.data.datasets import SPDataset, TestingDataset
 from lsp_detr.data.utils import collate_fn
 
 
@@ -27,9 +27,6 @@ class NuFuseDataset(Dataset[dict[str, Any]]):
         self.image_paths = sorted(self.root.glob("*.tif"))
         if max_samples is not None:
             self.image_paths = self.image_paths[:max_samples]
-
-        self.tissue_names = ["unknown"]
-        self.category_names: list[str] = []
 
     def __len__(self) -> int:
         return len(self.image_paths)
@@ -54,8 +51,6 @@ class NuFuseDataset(Dataset[dict[str, Any]]):
         return {
             "image": image,
             "instances": masks,
-            "categories": np.zeros(len(instance_ids), dtype=np.uint8),
-            "tissue": 0,
         }
 
 
@@ -98,8 +93,6 @@ class NuFuse(LightningDataModule):
                 )
             case "test":
                 self.test_dataset = TestingDataset(data, self.eval_transforms)
-            case "predict":
-                self.predict_dataset = PredictDataset(data, self.eval_transforms)
 
     def _dataloader(
         self, dataset: Dataset[Any], shuffle: bool = False
@@ -123,6 +116,3 @@ class NuFuse(LightningDataModule):
 
     def test_dataloader(self) -> Iterable[tuple[Tensor, list[dict[str, Any]]]]:
         return self._dataloader(self.test_dataset)
-
-    def predict_dataloader(self) -> Iterable[tuple[Tensor, list[dict[str, Any]]]]:
-        return self._dataloader(self.predict_dataset)

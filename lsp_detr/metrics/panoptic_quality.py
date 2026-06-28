@@ -2,62 +2,66 @@ import torch
 from torch import Tensor
 from torchmetrics import Metric
 
-from lsp_detr.metrics.binary_panoptic_quality import binary_panoptic_quality
+from lsp_detr.misc import linear_assignment
+
+
+def panoptic_quality(
+    preds: Tensor,
+    targets: Tensor,
+    iou_threshold: float = 0.5,
+    eps: float = 1e-6,
+) -> tuple[float, float, float]:
+    preds = preds.flatten(1).float()
+    targets = targets.flatten(1).float()
+
+    intersection = targets @ preds.T
+    union = targets.sum(dim=1, keepdim=True) + preds.sum(dim=1) - intersection
+    iou = intersection / union
+
+    row_ind, col_ind = linear_assignment(-iou)
+    iou = iou[row_ind, col_ind]
+
+    iou = iou[iou > iou_threshold]
+    tp = iou.numel()
+
+    dq = tp / (0.5 * preds.size(0) + 0.5 * targets.size(0) + eps)
+    sq = iou.sum() / (tp + eps)
+    pq = dq * sq
+
+    return float(dq), float(sq), float(pq)
 
 
 class PanopticQuality(Metric):
-    def __init__(
-        self, num_classes: int, iou_threshold: float = 0.5, masked: bool = False
-    ) -> None:
+    def __init__(self, iou_threshold: float = 0.5) -> None:
         super().__init__()
-        self.num_classes = num_classes
         self.iou_threshold = iou_threshold
-        self.masked = masked
-
-        self.mDQ: Tensor
-        self.mSQ: Tensor
-        self.mPQ: Tensor
+        self.dq: Tensor
+        self.sq: Tensor
+        self.pq: Tensor
         self.count: Tensor
-        self.add_state("mDQ", default=torch.tensor(0.0), dist_reduce_fx="sum")
-        self.add_state("mSQ", default=torch.tensor(0.0), dist_reduce_fx="sum")
-        self.add_state("mPQ", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("dq", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("sq", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("pq", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
 
-    def update(self, preds: dict[str, Tensor], targets: dict[str, Tensor]) -> None:
-        if targets["masks"].numel() == 0:
+    def update(self, preds: Tensor, targets: Tensor) -> None:
+        if preds.numel() == 0 and targets.numel() == 0:
             return
 
-        dqs = []
-        sqs = []
-        pqs = []
+        dq, sq, pq = panoptic_quality(preds, targets, self.iou_threshold)
 
-        for c in range(self.num_classes):
-            if torch.any(targets["labels"] == c):
-                dq, sq, pq = binary_panoptic_quality(
-                    preds["masks"][preds["labels"] == c],
-                    targets["masks"][targets["labels"] == c],
-                    self.iou_threshold,
-                    self.masked,
-                )
-                dqs.append(dq)
-                sqs.append(sq)
-                pqs.append(pq)
-
-        self.mDQ += torch.mean(torch.tensor(dqs))
-        self.mSQ += torch.mean(torch.tensor(sqs))
-        self.mPQ += torch.mean(torch.tensor(pqs))
+        self.dq += dq
+        self.sq += sq
+        self.pq += pq
         self.count += 1
 
     def compute(self) -> dict[str, Tensor]:
-        if self.masked:
-            return {
-                "mMDQ": self.mDQ / self.count,
-                "mMSQ": self.mSQ / self.count,
-                "mMPQ": self.mPQ / self.count,
-            }
+        if self.count == 0:
+            zero = torch.zeros_like(self.pq)
+            return {"dq": zero, "sq": zero, "pq": zero}
 
         return {
-            "mDQ": self.mDQ / self.count,
-            "mSQ": self.mSQ / self.count,
-            "mPQ": self.mPQ / self.count,
+            "dq": self.dq / self.count,
+            "sq": self.sq / self.count,
+            "pq": self.pq / self.count,
         }

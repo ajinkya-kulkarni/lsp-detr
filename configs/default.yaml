@@ -17,7 +17,7 @@ trainer:
       _target_: lightning.pytorch.callbacks.ModelCheckpoint
       save_top_k: 1
       save_last: true
-      monitor: validation/bPQ
+      monitor: validation/pq
       mode: max
     finetune:
       _target_: lightning.pytorch.callbacks.BackboneFinetuning
@@ -30,7 +30,7 @@ data:
     - _target_: albumentations.Normalize
 
 model:
-  _target_: lsp_detr.det_meta_arch.DETMetaArch
+  _target_: lsp_detr.lightning_module.LSPDetrModule
   warmup_epochs: 10
   num_classes: ???
   num_radial_distances: ${data.num_radial_distances}

@@ -41,8 +41,13 @@ class F1Score(Metric):
         self.fn += targets.size(0) - valid.sum()
 
     def compute(self) -> dict[str, Tensor]:
-        precision = self.tp / (self.tp + self.fp)
-        recall = self.tp / (self.tp + self.fn)
-        f1_score = 2 * (precision * recall) / (precision + recall)
+        precision = self.tp / (self.tp + self.fp).clamp_min(1)
+        recall = self.tp / (self.tp + self.fn).clamp_min(1)
+        denominator = precision + recall
+        f1_score = torch.where(
+            denominator > 0,
+            2 * (precision * recall) / denominator,
+            torch.zeros_like(denominator),
+        )
 
         return {"Precision": precision, "Recall": recall, "F1": f1_score}
